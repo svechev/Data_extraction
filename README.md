@@ -17,7 +17,7 @@ They are only used in the statistics scripts:
 ## Usage 
 Run the extract_data.py script from inside the scripts directory. Example:
 
-C:\..\some directories\..\bar_plot_extraction\scripts> python extract_data.py
+C:\..\some directories\..\scripts> python extract_data.py
 
 Before running the script, please read the provided information about configuration details in the beginning of the source code.
 
