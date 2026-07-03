@@ -5,55 +5,21 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from matplotlib import rcParams
-
-# ============================================
-#               INSTRUCTIONS
-# ============================================
+from dtw import *
 
 # EXECUTE THE SCRIPT FROM INSIDE THE "scripts" DIRECTORY 
 
 # ==== Global constants ======
-WINDOW_SIZE = 0        # used in continuous extraction 
-GRAY_THRESHOLD = 80    # used in continuous extraction
+GRAY_THRESHOLD = 80
 SHOW_IMAGE = False
-# ============================
+BETWEEN = 19
 
-# Before running the script:
-
-# Only one image must be in the img directory when running the script.
-# It is advised to store other images you might have in the img_backup directory
-
-# For running the script: 
-
-# In the current version of this script - we have 2 images to use it on
-# - a bar plot graph (figure1_no_line.png)
-# - a curve plot (solar.ts.png)
-# You can add your own images but you have to change some variables below
-
-# The variable img_path1 describes the image for the bar plot
-# and img_path2 describes the image for the curve plot
-
-# The script asks the user if they want a continuous extraction
-# If the answer is no, img_path1 is used
-# If the answer is yes, img_path2 is used
+# best results with window_size = 0, gray_threshold = 80 - residual mean is 15.43
+# tick between labels - 19 
 
 # ============ Image to run the code on ============
-img_path: str
-img_path1 = '../img/figure1_no_line.png'
-img_path2 = '../img/solar.ts.png'
-img_name: str
-
-
-# The script asks the used for amount of ticks between labels.
-# Optimal values for the images in the current repository version:
-# - for figure1_no_line.png - use 2
-# - for solar.ts.png - use 19 if you want one value for the beginning of each year
-#                    - use 39 for the beginning and middle of each year
-
-# =====================================================
-#               END CONFIGURATION
-# =====================================================
-
+img_path = '../img/solar.ts.png'
+img_name = Path(img_path).name
 reader = easyocr.Reader(['en'], gpu=False)
 
 # ========== SAVES INFORMATION FOR THE OCR TEXT =============
@@ -204,13 +170,7 @@ def detectAxes(filepath, threshold=None, debug=False):
             
     cv2.line(image, (0, maxindex), (width, maxindex),  (255, 0, 0), 2)
     xaxis = (0, maxindex, width, maxindex)
-    
-    if debug:
-        rcParams['figure.figsize'] = 15, 8
 
-        fig, ax = plt.subplots(1, 1)
-        ax.imshow(image, aspect = 'auto')
-        
     return xaxis, yaxis
 # ===========================================================
 
@@ -236,7 +196,7 @@ def cleanText(image_text):
 
     return cleaned
 
-def getProbableLabels2(image, image_text, xaxis, yaxis):
+def getProbableLabels(image, image_text, xaxis, yaxis):
     '''
     Using the image and the already extracted text, classifies the text as 
     X-label, Y-label, X-text, Y-text, or legend text.
@@ -295,200 +255,6 @@ def getProbableLabels2(image, image_text, xaxis, yaxis):
             # Consider non-numeric only for legends
             legends.append((text, (textx, texty, w, h)))
     
-    # Get the y-labels by finding the maximum
-    # intersections with the sweeping line
-    maxIntersection = 0
-    maxList = []
-    for i in range(x11):
-        count = 0
-        current = []
-        for index, (text, rect) in enumerate(y_labels):
-            if lineIntersectsRectX(i, rect):
-                count += 1
-                current.append(y_labels[index])
-                            
-        if count > maxIntersection:
-            maxIntersection = count
-            maxList = current
-    
-    y_labels_list = maxList.copy()
-    
-    y_labels = []
-    for text, (textx, texty, w, h) in maxList:
-        y_labels.append(text)
-        
-    # Get the x-labels by finding the maximum
-    # intersections with the sweeping line
-    maxIntersection = 0
-    maxList = []
-    for i in range(y1 - XLABEL_TOL, height):
-        count = 0
-        current = []
-        for index, (text, rect) in enumerate(x_labels):
-            if lineIntersectsRectY(i, rect):
-                count += 1
-                current.append(x_labels[index])
-                            
-        if count > maxIntersection:
-            maxIntersection = count
-            maxList = current
-            
-    x_labels_list = maxList.copy()
-    
-    x_text = x_labels.copy()
-    x_labels = []
-    hmax = 0
-    
-    for text, (textx, texty, w, h) in maxList:
-        x_labels.append(text)
-        if texty + h > hmax:
-            hmax = texty + h
-    
-    # Get possible x-text by moving from where we
-    # left off in x-labels to the complete
-    # height of the image.
-    maxIntersection = 0
-    maxList = []
-    for i in range(hmax + 1, height):
-        count = 0
-        current = []
-        for index, (text, rect) in enumerate(x_text):
-            if lineIntersectsRectY(i, rect):
-                count += 1
-                current.append(x_text[index])
-                            
-        if count > maxIntersection:
-            maxIntersection = count
-            maxList = current
-    
-    x_text = []
-    for text, (textx, texty, w, h) in maxList:
-        x_text.append(text)
-    
-    # Get possible legend text
-    # For this, we need to search both top to
-    # bottom and also from left to right.
-    
-    legends_and_numbers = mergeTextBoxes(legends)
-    
-    legends = []
-    for text, (textx, texty, w, h) in legends_and_numbers:
-        if not re.search(r'^([(+-]*?(\d+)?(?:\.\d+)*?[-%) ]*?)*$', text):
-            legends.append((text, (textx, texty, w, h)))
-    
-    
-    def canMerge(group, candidate):
-        candText, candRect = candidate
-        candx, candy, candw, candh = candRect
-        
-        for memText, memRect in group:
-            memx, memy, memw, memh = memRect
-                
-            if abs(candy - memy) <= 5 and abs(candy + candh - memy - memh) <= 5:
-                return True
-            elif abs(candx - memx) <= 5:
-                return True
-                
-        return False
-    
-    # Grouping Algorithm
-    legend_groups = []
-    for index, (text, rect) in enumerate(legends):
-
-        for groupid, group in enumerate(legend_groups):
-            if canMerge(group, (text, rect)):
-                group.append((text, rect))
-                break
-        else:
-            legend_groups.append([(text, rect)])
-    
-    #print(legend_groups)
-    #print("\n\n")
-    
-    maxList = []
-    
-    # the group with the highest amount of words is classified as the legend
-    if len(legend_groups) > 0:
-        maxList = max(
-            legend_groups,
-            key=lambda g: sum(len(text.split()) for text, _ in g)
-        )
-
-    legends = []
-    for text, (textx, texty, w, h) in maxList:
-        legends.append(text)
-        
-    return image, x_labels, x_labels_list, x_text, y_labels, y_labels_list, y_text_list, legends, maxList
-
-
-def getProbableLabels1(image, image_text, xaxis, yaxis):
-    '''
-    Using the image and the already extracted text, classifies the text as 
-    X-label, Y-label, X-text, Y-text, or legend text.
-    Returns lists for each category that contain the classified texts
-    '''
-    
-    y_labels = []
-    x_labels = []
-    legends = []
-    y_text_list = []
-    
-    height, width, channels = image.shape
-    
-    (x1, y1, x2, y2) = xaxis
-    (x11, y11, x22, y22) = yaxis
-
-    XLABEL_TOL = 80 # tolerance for x-labels
-
-    image_text = cleanText(image_text)
-    
-
-    # Check every text:
-    # below x-axis -> probably an x-label or x-text
-    # left of y-axis + above x-axis -> probably an y-label
-    # text can be legend if it's above x-axis and is not numeric  
-    for text, (textx, texty, w, h) in image_text:
-        text = text.strip()
-
-        
-        cross_x = (x2 - x1) * (texty - y1) - (y2 - y1) * (textx - x1)
-        cross_y = (x22 - x11) * (texty - y11) - (y22 - y11) * (textx - x11)
-
-        # print(
-        #     text,
-        #     textx,
-        #     texty,
-        #     np.sign(cross_x),
-        #     np.sign(cross_y),
-        #     abs(texty - y1) <= XLABEL_TOL
-        # ) 
-
-        # below x-axis -> text can be an x-label
-        if abs(texty - y1) <= XLABEL_TOL:
-            x_labels.append((text, (textx, texty, w, h)))
-
-
-        # To the left of y-axis and top of x-axis
-        elif np.sign(cross_x) <= 0 and np.sign(cross_y) >= 0:
-            
-            numbers = re.findall(r'^[+-]?\d+(?:\.\d+)?[%-]?$', text)
-            if bool(numbers):
-                y_labels.append((text, (textx, texty, w, h)))
-            else:
-                y_text_list.append((text, (textx, texty, w, h)))
-                # Consider non-numeric only for legends
-                legends.append((text, (textx, texty, w, h)))
-            
-
-        # Top of x-axis and to the right of y-axis
-        elif (np.sign((x2 - x1) * (texty - y1) - (y2 - y1) * (textx - x1)) <= 0 and
-            np.sign((x22 - x11) * (texty - y11) - (y22 - y11) * (textx - x11)) <= 0):
-            
-            # Consider non-numeric only for legends
-            legends.append((text, (textx, texty, w, h)))
-    
-    # print("x_labels candidates:", [t for t, _ in x_labels])
-
     # Get the y-labels by finding the maximum
     # intersections with the sweeping line
     maxIntersection = 0
@@ -1002,7 +768,7 @@ def boxGroup(img, box):
     
     return groups
 
-def getYValBars(between=0, debug=False):
+def getYVal(window_size, between=0, debug=False):
     '''
     Finds the Y-values for each series in the legend
     and returns a nested dictionary
@@ -1021,363 +787,18 @@ def getYValBars(between=0, debug=False):
        using linear interpolation when the 'between' parameter is greater
        than zero.
     8. For each legend:
-       a. Create a color mask using the legend marker color.
-       b. Isolate chart elements belonging to that legend.
-       c. Detect contours corresponding to bars/plot elements.
-       d. Merge related contours into bounding rectangles.
-       e. Match each detected bar to the nearest X-axis tick.
-       f. Convert bar height from pixels to chart values using the
-          normalization ratio.
-       g. Assign the closest detected value to each tick.
-       h. Set the value to 0 if no bar is sufficiently close to the tick.
-          (when writing to excel, 0 values are recorded as NaN)
-    9. Store the extracted values in a dictionary of the form:
-
-       {
-           image_name: {
-               legend_name: {
-                   x_label: y_value,
-                   ...
-               }
-           }
-       }
-    '''
-    
-    yValueDict = {}    # will store the results
-
-
-    # ------------------------------------------------------------------
-    # Step 1: Load image and detect chart axes
-    # ------------------------------------------------------------------
-    img = cv2.imread(img_path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img_height, img_width, _ = img.shape
-    
-    if debug:
-        show(img, "Original image")
-
-    # Axes detection
-    xaxis, yaxis = detectAxes(img_path)
-    
-    
-    for (x1, y1, x2, y2) in [xaxis]:
-        xaxis = (x1, y1, x2, y2)
-
-    for (x1, y1, x2, y2) in [yaxis]:
-        yaxis = (x1, y1, x2, y2)
-
-    # print("xaxis:", xaxis)
-    # print("yaxis", yaxis)
-
-
-    # ------------------------------------------------------------------
-    # Step 2: Extract probable X-axis labels and legends
-    # ------------------------------------------------------------------
-    image_text = bbox_text[img_name]
-
-    img, x_labels, x_labels_list, _, _, _, _, legends, legendBoxes = getProbableLabels1(img, image_text, xaxis, yaxis)
-
-    actual_image = img.copy()
-    
-    try:
-
-        # ------------------------------------------------------------------
-        # Step 3: Calculate pixel-to-value normalization ratio
-        # ------------------------------------------------------------------
-        list_text, normalize_ratio = getRatio(xaxis, yaxis)
-        
-        # ------------------------------------------------------------------
-        # Step 4: Remove detected text from the image
-        # ------------------------------------------------------------------
-        texts = img_text[img_name]['TextDetections']
-        
-        for text in texts:
-            if text['Type'] == 'WORD' and text['Confidence'] >= 50:
-                vertices = [[vertex['X'] * img_width, vertex['Y'] * img_height] for vertex in text['Geometry']['Polygon']]
-                vertices = np.array(vertices, np.int32)
-                vertices = vertices.reshape((-1, 1, 2))
-
-                img = cv2.fillPoly(img, [expand(vertices, 1)], (255, 255, 255))
-
-        if debug:
-            show(img, "After removing text")
-
-        # ------------------------------------------------------------------
-        # Step 5: Threshold image and extract potential legend contours
-        # ------------------------------------------------------------------
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        threshold = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)[1]
-        
-        if debug:
-            show(threshold, "Binary threshold")
-
-        contours, _ = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours = [contour for contour in contours if cv2.contourArea(contour) < 0.01 * img_height * img_width]
-
-        contours = [cv2.approxPolyDP(contour, 3, True) for contour in contours]
-        rects = [cv2.boundingRect(contour) for contour in contours]
-
-        # ------------------------------------------------------------------
-        # Step 6: Match legends with their color markers
-        # ------------------------------------------------------------------
-        groups = []
-        legendtexts = []
-        legendrects = []
-
-        for box in legendBoxes:
-            text, (textx, texty, width, height) = box
-            bboxes = filterBbox(rects, box)
-            # print("bboxes:", bboxes)
-
-            if bboxes is not None:
-                for rect in [bboxes]:
-                    (x, y, w, h) = rect
-                    legendrects.append(rect)
-                    
-                    group = boxGroup(actual_image, rect)[0]
-                    group = [arr.tolist() for arr in group]
-                    
-                    groups.append(group)
-                    legendtexts.append(text)
-                    
-                    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 3)
-
-                cv2.rectangle(img, (textx, texty), (textx + width, texty + height), (255, 0, 0), 2)
-
-
-        # ------------------------------------------------------------------
-        # Step 7: Generate virtual X-axis ticks if requested
-        # ------------------------------------------------------------------
-        all_ticks = sorted(
-            x_labels_list,
-            key=lambda x: x[1][0]   # sort by x position
-        )  
-
-        data = {}
-        for legend in legends:
-            data[legend] = {}
-            
-            # for x_label, box in x_labels_list:
-            #     data[legend][x_label] = 0.0
-
-        expanded_ticks = []
-
-        if between == 0:
-            expanded_ticks = all_ticks
-
-        else:
-            for i in range(len(all_ticks) - 1):
-
-                left_label, left_box = all_ticks[i]
-                right_label, right_box = all_ticks[i + 1]
-
-                left_val = float(left_label)
-                right_val = float(right_label)
-
-                x1, y1, w1, h1 = left_box
-                x2, y2, w2, h2 = right_box
-
-                step = (right_val - left_val) / (between + 1)
-
-                # create intermediate virtual ticks
-                for k in range(between + 1):
-                    alpha = k / (between + 1)
-
-                    interp_x = x1 + alpha * (x2 - x1)
-                    interp_y = y1 + alpha * (y2 - y1)
-
-                    expanded_ticks.append(
-                        (left_val + k * step, (interp_x, interp_y, w1, h1))
-                    )
-
-            # include last tick
-            expanded_ticks.append((float(all_ticks[-1][0]), all_ticks[-1][1]))  
-
-        x_labels_list = [
-            (str(val), box) for val, box in expanded_ticks
-        ]   
-
-
-        # ------------------------------------------------------------------
-        # Step 8: Extract values for each legend series
-        # ------------------------------------------------------------------
-        for i in range(len(groups)):
-
-            # --------------------------------------------------------------
-            # Step 8a: Re-load image and remove legend markers
-            # --------------------------------------------------------------
-            img = cv2.imread(img_path)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            legendtext = legendtexts[i]
-            
-            for box in legendrects:
-                (textx, texty, width, height) = box
-                cv2.rectangle(img, (textx, texty), (textx + width, texty + height), (255, 255, 255), cv2.FILLED)
-            
-            # --------------------------------------------------------------
-            # Step 8b: Create color mask for current legend
-            # --------------------------------------------------------------
-            mask = None
-            for value in groups[i]:
-                COLOR_MIN = np.array([value[0], value[1], value[2]], np.uint8)
-                COLOR_MAX = np.array([value[0], value[1], value[2]], np.uint8)
-
-                if mask is None:
-                    mask = cv2.inRange(img, COLOR_MIN, COLOR_MAX)
-                else:
-                    mask = mask | cv2.inRange(img, COLOR_MIN, COLOR_MAX)
-
-            # --------------------------------------------------------------
-            # Step 8c: Detect bars/plot elements belonging to this legend
-            # --------------------------------------------------------------
-            image = cv2.bitwise_and(img, img, mask = mask)
-            image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, (3, 3))
-
-            edged = cv2.Canny(image, 0, 250)
-
-            if debug:
-                show(edged, "Edges (Canny)")
-
-            contours, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            contours = [contour for contour in contours if cv2.contourArea(contour) > 0.]
-
-
-            # Remove noisy ones!
-            if len(contours) == 0 or len(contours) > 100:
-                continue
-
-            contours = [cv2.approxPolyDP(contour, 3, True) for contour in contours]
-
-            # --------- DEBUG -----------
-            debug_img = img.copy()
-            for c in contours:
-                x,y,w,h = cv2.boundingRect(c)
-                cv2.rectangle(debug_img, (x,y), (x+w,y+h), (0,255,0), 2)
-
-            if debug:
-                show(debug_img, "Contours / detected bars")
-            # -------------------------
-
-
-            # --------------------------------------------------------------
-            # Step 8d: Merge related contours into rectangles
-            # --------------------------------------------------------------
-            rects = mergeRects(contours)
-            textBoxes = []
-            labels = []
-            
-
-            # --------------------------------------------------------------
-            # Step 8e: Match detected bars to nearest X-axis tick
-            # --------------------------------------------------------------
-            for rectBox in rects:
-                min_distance = sys.maxsize
-                closestBox = None
-                labeltext = None
-
-                for text, textBox in x_labels_list:
-                    if RectDist(rectBox, textBox) < min_distance:
-                        closestBox = textBox
-                        min_distance = RectDist(rectBox, textBox)
-                        labeltext = text
-
-                textBoxes.append(closestBox)
-                labels.append(labeltext)
-                
-            list_len = []
-            
-            for rect in rects:
-                list_len.append((rect, float(rect[3])))
-
-
-            # --------------------------------------------------------------
-            # Step 8f: Convert pixel heights to chart values
-            # --------------------------------------------------------------
-
-            # y-values will be a product of the normalize ratio and each length              
-            y_val = [(rect, round(l* normalize_ratio, 1)) for rect, l in list_len]
-            
-            tick_spacing = (
-                x_labels_list[1][1][0] -
-                x_labels_list[0][1][0]
-            )
-
-            # how far can the bar be from the tick
-            # (if this is increased, the last ticks that have no bars
-            # will catch the last available bar - wrong in our situation)
-            MAX_TICK_DIST = tick_spacing * 0.5 
-
-            # --------------------------------------------------------------
-            # Step 8g: Assign values to ticks
-            # --------------------------------------------------------------
-            for x_label, box in x_labels_list:
-                x, y, w, h = box
-
-                value = 0.0
-                dist = sys.maxsize
-
-                for rect, val in y_val:
-                    vx, vy, vw, vh = rect
-
-                    bar_center = vx + vw / 2
-                    tick_center = x + w / 2
-
-                    d = abs(tick_center - bar_center)
-
-                    if d < dist:
-                        dist = d
-                        value = val
-
-                # --------------------------------------------------------------
-                # Step 8h: Set value to zero when no nearby bar exists
-                # --------------------------------------------------------------
-                if dist > MAX_TICK_DIST:
-                    value = 0.0
-
-                data[legendtext][x_label] = value
-
-        # ------------------------------------------------------------------
-        # Step 9: Store results and return dictionary
-        # ------------------------------------------------------------------        
-        yValueDict[img_name] = data
-    
-    except Exception as e:
-        print("Exception:", e)
-        traceback.print_exc()
-        sys.exit(1)
-                
-    return yValueDict
-
-
-def getYValCont(between=0, debug=False):
-    '''
-    Finds the Y-values for each series in the legend
-    and returns a nested dictionary
-
-    Processing steps:
-    1. Load the image and detect the X and Y axes.
-    2. Extract probable X-axis labels, legends, and legend bounding boxes.
-    3. Calculate the Y-axis normalization ratio (pixels -> chart values).
-    4. Remove all detected text from the image to avoid interference with
-       contour and color detection.
-    5. Threshold the image and extract contours that may correspond to
-       legend markers.
-    6. Match legend text to its visual marker and determine the marker's
-       dominant color group.
-    7. Optionally generate virtual X-axis ticks between labeled ticks
-       using linear interpolation when the 'between' parameter is greater
-       than zero.
-    8. For each legend:
-       a. Create a color mask using the legend marker color.
-       b. Isolate chart elements belonging to that legend.
-       c. Detect contours corresponding to bars/plot elements.
-       d. Merge related contours into bounding rectangles.
-       e. Match each detected bar to the nearest X-axis tick.
-       f. Convert bar height from pixels to chart values using the
-          normalization ratio.
-       g. Assign the closest detected value to each tick.
-       h. Set the value to 0 if no bar is sufficiently close to the tick.
-          (when writing to excel, 0 values are recorded as NaN)
+       a. Load the original image and convert it to grayscale.
+       b. Determine the vertical boundaries of the plotting area.
+       c. For each X-axis tick (including virtual ticks):
+          i.   Search within a horizontal window centered on the tick.
+          ii.  Collect all dark pixels inside the plot area.
+          iii. Group nearby pixels into clusters.
+          iv.  Select the largest cluster as the detected curve.
+          v.   Use the median Y-position of that cluster as the curve location.
+          vi.  Convert the pixel position to a chart value using the
+               normalization ratio.
+          vii. Assign the computed value to the corresponding X-axis tick.
+          viii.If no suitable pixels are found, assign a value of 0.
     9. Store the extracted values in a dictionary of the form:
 
        {
@@ -1422,7 +843,7 @@ def getYValCont(between=0, debug=False):
     # ------------------------------------------------------------------
     image_text = bbox_text[img_name]
 
-    img, x_labels, x_labels_list, _, y_labels, y_labels_list, _, legends, legendBoxes = getProbableLabels2(img, image_text, xaxis, yaxis)
+    img, x_labels, x_labels_list, _, y_labels, y_labels_list, _, legends, legendBoxes = getProbableLabels(img, image_text, xaxis, yaxis)
 
     actual_image = img.copy()
     
@@ -1558,12 +979,18 @@ def getYValCont(between=0, debug=False):
         # Step 8: Extract values for each legend series
         # ------------------------------------------------------------------
         for i in range(len(groups)):
-
             legendtext = legendtexts[i]
-           
+
+            # --------------------------------------------------------------
+            # Step 8a: Load image, convert to grayscale
+            # --------------------------------------------------------------
             image = cv2.imread(img_path)
             gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
+
+            # --------------------------------------------------------------
+            # Step 8b: Determine plotting boundaries
+            # --------------------------------------------------------------
             # _, black_mask = cv2.threshold(gray, 190, 255, cv2.THRESH_BINARY_INV)
             y_label_ys = [box[1] for _, box in y_labels_list]
             plot_top = min(y_label_ys) + 20
@@ -1572,8 +999,6 @@ def getYValCont(between=0, debug=False):
             print(f"{plot_bottom=}")
 
             MIN_Y_VALUE = min([int(txt) for (txt, _) in y_labels_list])
-
-            # prev_y = None
 
             debug_img = image.copy() 
 
@@ -1594,12 +1019,17 @@ def getYValCont(between=0, debug=False):
                 2
             )
 
+
+            # --------------------------------------------------------------
+            # Step 8c: Process each X-axis tick
+            # --------------------------------------------------------------
             for x_label, box in x_labels_list:
                 x, y, w, h = box
+                
+                # search for dark pixels near the current x position
                 x_center = int(x + w / 2)
 
-
-                window = WINDOW_SIZE
+                window = window_size
                 xs = range(
                     max(0, x_center - window) - 1,
                     min(img.shape[1], x_center + window + 1) - 1
@@ -1660,167 +1090,166 @@ def getYValCont(between=0, debug=False):
                 
     return yValueDict
 
+def process(window_size):
 
-# =============== WRITE TO EXCEL ===================
-def addToExcel(worksheet, dataname, data, row):
-    '''
-    Helper method used for writing all the data to the
-    sheet "Full data"
-    '''
-    col = 0
-
-    worksheet.write(row, col, dataname)
-    for content in data:
-        col += 1
-        worksheet.write(row, col, content)
+    # GET THE Y VALUES
+    # ADD "debug = True" for displaying the image at different processing steps
+    yValueDict = getYVal(window_size, between=BETWEEN, debug=False)
 
 
-def addYValsToExcel(worksheet, dataname, data, col, is_y=False):
-    '''
-    Helper method used for writing only the X and Y data to the
-    sheet "Y-values"
-    '''
-    row = 0
+    if img_name in yValueDict:      
 
-    worksheet.write(row, col, dataname)
-    for content in data:
-        row += 1
+        data = yValueDict[img_name]
+ 
+        for _, datadict in data.items():
 
-        # don't insert 0 as y value, NaN instead
-        if is_y and content == 0: 
-            worksheet.write(row, col, "NaN")
-        else:
-            worksheet.write(row, col, content)
+            # Skip if no values have been detected
+            vals = list(datadict.values())
+            return np.array(vals[:-2])
+
+
+def get_actual_data():
+    # extract actual data from solar.csv
+    actual_data = pd.read_csv("../data/solar.csv") # read
+    actual_data = actual_data.rename(columns={actual_data.columns[-1]: "Values"}) # rename column
+    # print(actual_data.columns)
+    actual_data["Values"] = actual_data['Values'].astype(float) # convert to floats
+
+    # filter data
+
+    # the N/A value, according to the csv
+    actual_data = actual_data[actual_data['Values'] != -9999.000] 
+
+    # filter only start of year
+    actual_data["Date"] = pd.to_datetime(actual_data["Date"])
+    actual_data = actual_data[ (actual_data["Date"].dt.month == 1) & (actual_data["Date"].dt.day == 1)]
+
+    # filter years between 1960 and 2018
+    actual_data = actual_data[ (actual_data["Date"].dt.year >= 1960) & (actual_data["Date"].dt.year <= 2018)]
+
+    # keep only the y values
+    actual_data = np.array(actual_data["Values"])
+    return actual_data
+
+def plot_residual(residual, window_size):
+    # Create a figure
+    fig = plt.figure()
+    fig.canvas.manager.set_window_title(f"Window size = {window_size}")
+
+    # modify the xs so they match the year labels
+    xs = np.arange(1960, 2019)
+
+    # plot for the residual
+    plt.subplot(1, 2, 1)
+    plt.title("Residual plot")
+    plt.xlabel("Year")
+    plt.plot(xs, residual, "-or")
+
+    # histogram for the residual
+    plt.subplot(1, 2, 2)
+    plt.title("Histogram of residual")
+    plt.hist(residual)
+
+    plt.show()
+
+def plot_dtw(est_data, actual_data, window_size):
+    # define the query and template
+    query = est_data
+    template = actual_data
+
+    # find the best match with the canonical recursion formula
+    alignment = dtw(query, template, keep_internals=True)
+
+    print(f"\ndistance: {alignment.distance:.2f}")
+    print(f"normalized distance: {alignment.normalizedDistance}")
+
+    # Display the warping curve
+    alignment.plot(type="threeway", xlab="Estimated data", ylab="Actual data")
+    plt.gcf().canvas.manager.set_window_title(f"Window size = {window_size}")
+
+    # Align and plot with the Rabiner-Juang type VI-c unsmoothed recursion
+    dtw(
+        query,
+        template,
+        keep_internals=True,
+        step_pattern=rabinerJuangStepPattern(6, "c")
+    ).plot(type="twoway", offset=-2)
+
+    plt.gcf().canvas.manager.set_window_title(f"Window size = {window_size}")
+
+    plt.show()
 
 if __name__ == '__main__':
-    
-    # ASK USER FOR CONTINUOUS LINE OR BAR PLOT
-    IS_CONTINUOUS = True
-    answer = input("Is the graph continuous? (y/n, default is y): ")
-    if answer.lower() in ["n", "no"]:
-        IS_CONTINUOUS = False
-
-    img_path = img_path2 if IS_CONTINUOUS else img_path1
-    img_name = Path(img_path).name
-
-    # GET THE NUMBER OF BARS BETWEEN EACH TICK
-    between = 0
-    try:
-        between = int(input("How many bars between each label tick: "))
-    except Exception:
-        print("Invalid input, using 0 instead")
+    # PROMPT USER FOR 3 WINDOW SIZES
+    window_1 = int(input("Window 1 size: "))
+    window_2 = int(input("Window 2 size: "))
+    window_3 = int(input("Window 3 size: "))
+    windows = [window_1, window_2, window_3]
 
     # OPEN THE IMAGE AND EXTRACT THE TEXT
     image = cv2.imread(img_path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image = detectText(img_name, image)
 
-    # GET THE Y VALUES
-    # ADD "debug = True" for displaying the image at different processing steps
-    if IS_CONTINUOUS: 
-        yValueDict = getYValCont(between=between)
-    else:
-        yValueDict = getYValBars(between=between)
+    est_data1 = process(window_1)
+    est_data2 = process(window_2)
+    est_data3 = process(window_3)
 
-    # PRINT INFORMATION IF NEEDED
-    # for (k, legends) in yValueDict.items():
-    #     print(f"{k}:")
-    #     for vals in legends.values():
-    #         for tick, val in vals.items():
-    #             print(f"{tick}: {val}")
+    actual_data = get_actual_data()
 
+    residual1 = est_data1 - actual_data
+    residual2 = est_data2 - actual_data
+    residual3 = est_data3 - actual_data
 
-    # OPEN AN EXCEL DOCUMENT FOR SAVING RESULTS
-    excel_path = '../results/FigureData2.xlsx' if IS_CONTINUOUS else '../results/FigureData1.xlsx'
-    workbook = xlsxwriter.Workbook(excel_path)
+    # print information in terminal
+    print("actual_data:")
+    print(actual_data)
+    print()
 
-    if img_name in yValueDict:      
-        height, width, channels = image.shape
-        xaxis, yaxis = detectAxes(img_path)
+    print("estimated data, window size", window_1)
+    print(est_data1)
+    print("estimated data, window size", window_2)
+    print(est_data2)
+    print("estimated data, window size", window_3)
+    print(est_data3)
+    print()
 
-        y_text = []
-
-        for (x1, y1, x2, y2) in [xaxis]:
-            xaxis = (x1, y1, x2, y2)
-
-        for (x1, y1, x2, y2) in [yaxis]:
-            yaxis = (x1, y1, x2, y2)
-            
-        image_text = bbox_text[img_name]
-        if IS_CONTINUOUS:
-            image, x_labels, _, x_text, y_labels, y_labels_list, y_text_list, legends, _ = getProbableLabels2(image,
-                                                                                                    image_text,
-                                                                                                    xaxis,
-                                                                                        yaxis)
-        else:
-             image, x_labels, _, x_text, y_labels, y_labels_list, y_text_list, legends, _ = getProbableLabels1(image,image_text,
-                                                                                                    xaxis,
-                                                                                        yaxis)
-
-                         
-
-        # Sort bounding rects by y coordinate
-        def getYFromRect(item):
-            return item[1][1]
-
-        y_labels_list.sort(key = getYFromRect)
-        y_text_list.sort(key = getYFromRect, reverse=True)
-        
-        for text, (textx, texty, w, h) in y_text_list:
-            y_text.append(text)
-
-        # Write to Excel
-        worksheet = workbook.add_worksheet("Full data")            
-        
-        addToExcel(worksheet, "file name", [img_path], 1)
-        addToExcel(worksheet, "x-text", x_text, 2)
-        addToExcel(worksheet, "x-labels", x_labels, 3)
-        addToExcel(worksheet, "y-text", y_text, 4)
-        addToExcel(worksheet, "y-labels", y_labels, 5)
-        addToExcel(worksheet, "legends", legends, 6)
-        
-        data = yValueDict[img_name]
-        column = 9
-        for legend, datadict in data.items():
-            if column == 9:
-                addToExcel(worksheet, "", datadict.keys(), 8)    
-                
-            addToExcel(worksheet, legend, datadict.values(), column)
-            column += 1
-        
-        # Print the output here
-        print("file name    :  ", img_path)
-        print("x-text       :  ", x_text)
-        print("x-labels     :  ", x_labels)
-        print("y-text       :  ", y_text)
-        print("y-labels     :  ", y_labels)
-        print("legends      :  ", legends)
-        print("data         :  ", data, end= "\n\n")
-        
-        # Insert the image
-        worksheet.insert_image('J21', img_path)
+    print("residual, window size", window_1)
+    print(residual1)
+    print("residual, window size", window_2)
+    print(residual2)
+    print("residual, window size", window_3)
+    print(residual3)
+    print()
 
 
-        # Add only y data to a new sheet
-        worksheet2 = workbook.add_worksheet("Y-values")
-        column = 0
-        for legend, datadict in data.items():
+    mean1, abs_mean1, std1 = np.mean(residual1), np.mean(abs(residual1)) ,np.std(residual1)
+    mean2, abs_mean2, std2 = np.mean(residual2), np.mean(abs(residual2)), np.std(residual2)
+    mean3, abs_mean3, std3 = np.mean(residual3), np.mean(abs(residual3)), np.std(residual3)
 
-            # Skip if no values have been detected
-            vals = list(datadict.values())
-            if True not in [True for val in vals if val != 0]:
-                continue
-            
-            # Otherwise add the data
-            addYValsToExcel(worksheet2, "X", datadict.keys(), column)    
-            column += 1
+    summary = pd.DataFrame({
+    "window_size": windows,
+    "mean": [mean1, mean2, mean3],
+    "mean_abs": [abs_mean1, abs_mean2, abs_mean3],
+    "std": [std1, std2, std3]
+    })
 
-            addYValsToExcel(worksheet2, legend, datadict.values(), column, is_y=True)
-            column += 1
+    print(summary)
+
+    plot_residual(residual1, window_1)
+    plot_residual(residual1, window_2)
+    plot_residual(residual1, window_3)
+
+    plot_dtw(est_data1, actual_data, window_1)
+    plot_dtw(est_data2, actual_data, window_2)
+    plot_dtw(est_data3, actual_data, window_3)
 
 
-    # Close the excel workbook!
-    workbook.close()
+    
+    
+
+    
+    
 
 
 
