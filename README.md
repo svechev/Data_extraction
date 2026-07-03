@@ -18,7 +18,7 @@ Run the extract_data.py script from inside the scripts directory. Example:
 
 C:\..\some directories\..\bar_plot_extraction\scripts> python extract_data.py
 
-Before running the script, please read information about the provided configuration details in the beginning of the source code.
+Before running the script, please read the provided information about configuration details in the beginning of the source code.
 
 ## Contents
 - scripts/
