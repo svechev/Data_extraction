@@ -1,4 +1,4 @@
-# Extracting information from bar plots
+# Extracting information from plots
 
 ## Requirements
 For running the code - Python 3.
@@ -9,7 +9,8 @@ Libraries used in the scripts that need to be installed:
 - matplotlib
 - numpy
   
-The following libraries are only used in the script graph_statistics.py
+The following libraries are not used in the extraction script extract_data.py. 
+They are only used in the statistics scripts:
 - pandas
 - dtw-python (only used in the script graph_statistics.py)
 
@@ -22,26 +23,21 @@ Before running the script, please read the provided information about configurat
 
 ## Contents
 - scripts/
- - extract_data.py - extracts data from the image in img/. Saves the result to results/FigureData1.xlsx or results/FigureData2.xlsx 
- - extract_diff_windows_test.py - like extract_data, but works for the solar.ts.png image. Runs 3 times with different configuration parameter values
- - graph_statistics.py - shows various information and plots that compare the extracted data from the bar plot to its actual data
- - solar_statistics - shows various information and plots that compare the extracted data from the curve plot (only beginning of each year) to its actual data
- - solar_statistics_6months.py - shows various information and plots that compare the extracted data from the curve plot (beginning and middle of each year) to its actual data
-   
+  - extract_data.py - extracts data from the image in img/. Saves the result to results/FigureData1.xlsx or results/FigureData2.xlsx 
+  - extract_diff_windows_test.py - like extract_data, but works for the solar.ts.png image. Runs 3 times with different configuration parameter values
+  - graph_statistics.py - shows various information and plots that compare the extracted data from the bar plot to its actual data
+  - solar_statistics.py - shows various information and plots that compare the extracted data from the curve plot (only beginning of each year) to its actual data
+  - solar_statistics_6months.py - shows various information and plots that compare the extracted data from the curve plot (beginning and middle of each year) to its actual data 
 - data/
   - virus-data-report.ods - the Microsoft Excel spreadsheet that contains the actual data, that the bar plot image uses
-  - solar.csv - comma separated values file, contains the actual data, that the curve plot image uses
-    
+  - solar.csv - comma separated values file, contains the actual data, that the curve plot image uses  
 - img/
-  - solar.ts.png - curve plot, the image that the script runs on
-    
+  - solar.ts.png - curve plot, the image that the script runs on  
 - img_backup/ - this directory has no effect on the scripts, it's used just for storage
-  - figure1_no_line.png - bar plot, the image that the script runs on
-  
+  - figure1_no_line.png - bar plot, the image that the script runs on (if the image is placed in the img directory)
 - results/
   - FigureData1.xlsx - stores the result of the extract_data.py script after it was used on the bar plot
-  - FigureData2.xlsx - stores the result of the extract_data.py script after it was used on the curve plot
-    
+  - FigureData2.xlsx - stores the result of the extract_data.py script after it was used on the curve plot  
 - statistics_figures/ - contains images of plots, produced by the statistics scripts
   - dtw.png
   - residual.png
@@ -53,5 +49,6 @@ Before running the script, please read the provided information about configurat
 The script is only used on one image, and it needs to be in the img directory.
 To use with a different image, you need to replace the current one.
 If the new image has a different name:
-In the beginning of the extract_data.py script, change the variable img_path1 or img_path2 to your desired image name
+In the beginning of the extract_data.py script, change the variable img_path1 or img_path2 to your desired image name.
+More information is provided in the beginning of the source code for extract_data.py.
  
