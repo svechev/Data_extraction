@@ -12,7 +12,7 @@ Libraries used in the scripts that need to be installed:
 The following libraries are not used in the extraction script extract_data.py. 
 They are only used in the statistics scripts:
 - pandas
-- dtw-python (only used in the script graph_statistics.py)
+- dtw-python
 
 ## Usage 
 Run the extract_data.py script from inside the scripts directory. Example:
