@@ -1,8 +1,7 @@
 import cv2, re, sys, math, easyocr, traceback
-import xlsxwriter, json, os
+import xlsxwriter
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from pathlib import Path
 from matplotlib import rcParams
 
@@ -51,7 +50,7 @@ img_name: str
 #                    - use 39 for the beginning and middle of each year
 
 # =====================================================
-#               END CONFIGURATION
+#               END INSTRUCTIONS
 # =====================================================
 
 reader = easyocr.Reader(['en'], gpu=False)
