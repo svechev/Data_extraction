@@ -24,17 +24,28 @@ Before running the script, read the provided configuration details in the beginn
 - scripts/
  - extract_data.py - extracts data from the image in img/. Saves the result to results/FigureData1.xlsx or results/FigureData2.xlsx 
  - extract_diff_windows_test.py - like extract_data, but works for the solar.ts.png image. Runs 3 times with different configuration parameter values
- - graph_statistics.py - shows various information and plots that compare the extracted data to the actual data
+ - graph_statistics.py - shows various information and plots that compare the extracted data from the bar plot to its actual data
+ - solar_statistics - shows various information and plots that compare the extracted data from the curve plot (only beginning of each year) to its actual data
+ - solar_statistics_6months.py - shows various information and plots that compare the extracted data from the curve plot (beginning and middle of each year) to its actual data
+   
 - data/
   - virus-data-report.ods - the Microsoft Excel spreadsheet that contains the actual data, that the bar plot image uses
-  - solar
+  - solar.csv - comma separated values file, contains the actual data, that the curve plot image uses
+    
 - img/
+  - solar.ts.png - curve plot, the image that the script runs on
+    
+- img_backup/ - this directory has no effect on the scripts, it's used just for storage
   - figure1_no_line.png - bar plot, the image that the script runs on
+  
 - results/
-  - FigureData1.xlsx - stores the result of the extract_data.py script
-- statistics_figures/ - contains images of plots, produced by graph_statistics.py
+  - FigureData1.xlsx - stores the result of the extract_data.py script after it was used on the bar plot
+  - FigureData2.xlsx - stores the result of the extract_data.py script after it was used on the curve plot
+    
+- statistics_figures/ - contains images of plots, produced by the statistics scripts
   - dtw.png
   - residual.png
+  - solar_residual.png
 - .gitignore
 - README.md
 
